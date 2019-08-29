@@ -69,6 +69,7 @@ object RNG {
     }
 
   // A tail-recursive solution
+  // FIXME need to reverse result
   def ints2(count: Int)(rng: RNG): (List[Int], RNG) = {
     def go(count: Int, r: RNG, xs: List[Int]): (List[Int], RNG) =
       if (count == 0)
