@@ -44,9 +44,8 @@ object Tree {
   }
 
   def depth[A](t: Tree[A]): Long = t match {
-    // WRONG reaching a leaf should return 0
-    case Leaf(value) => 1
-    case Branch(left, right) => 1 + depth(left) max depth(right)
+    case Leaf(_) => 0
+    case Branch(left, right) => 1 + (depth(left) max depth(right))
   }
 
   def map[A, B](t: Tree[A])(f: A => B): Tree[B] = t match {
@@ -68,7 +67,7 @@ object Tree {
 
   def sizeViaFold[A](t: Tree[A]): Long = fold(t)(_ => 1)(1 + _ + _)
   def maximumViaFold(t: Tree[Int]): Int = fold(t)(i => i)(_ max _)
-  def depthViaFold[A](t: Tree[A]): Long = fold(t)(_ => 0)(1 + _ max _)
+  def depthViaFold[A](t: Tree[A]): Long = fold(t)(_ => 0)((b1,b2) => 1 + (b1 max b2))
   def mapViaFold[A, B](t: Tree[A])(f: A => B): Tree[B] =
     fold(t) (l => Leaf(f(l)): Tree[B]) ((l, r) => Branch(l, r))
 

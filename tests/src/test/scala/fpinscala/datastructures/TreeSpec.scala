@@ -8,7 +8,6 @@ import org.junit.runner.RunWith
 
 @RunWith(classOf[JUnitRunner])
 class TreeSpec extends Specification with DataTables {
-  import Tree._
 
   /**
    *                                 b1
