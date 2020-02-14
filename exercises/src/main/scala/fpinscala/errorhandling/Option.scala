@@ -21,14 +21,21 @@ sealed trait Option[+A] {
     }
     // map(f) getOrElse None
 
+  /*
+  Of course, we can also implement `flatMap` with explicit pattern matching.
+  */
+  def flatMap_1[B](f: A => Option[B]): Option[B] = this match {
+    case None => None
+    case Some(a) => f(a)
+  }
+
   def orElse[B>:A](ob: => Option[B]): Option[B] =
-/*
-    this match {
-      case Some(_) => this
-      case None => ob
-    }
-*/
     map (Some(_)) getOrElse(ob)
+
+  def orElse_1[B>:A](ob: => Option[B]): Option[B] = this match {
+    case None => ob
+    case _ => this
+  }
 
   def filter(f: A => Boolean): Option[A] = this match {
 /*
@@ -39,6 +46,9 @@ sealed trait Option[+A] {
     case Some(get) if f(get) => this
     case _ => None
   }
+
+  def filter_1(f: A => Boolean): Option[A] =
+    flatMap(a => if (f(a)) Some(a) else None)
 }
 case class Some[+A](get: A) extends Option[A]
 case object None extends Option[Nothing]
@@ -87,10 +97,6 @@ object Option {
       case ::(h, t) => h.flatMap(a => sequence(t).map(acc => a :: acc))
       case Nil => Some(Nil)
     }
-/*
-    // foldRight came to mind, but didn't think to re-use map2 :(
-    a.foldRight[Option[List[A]]](Some(Nil))((oa, acc) => map2(oa, acc)(_ :: _))
-*/
 
   def traverse[A, B](a: List[A])(f: A => Option[B]): Option[List[B]] =
     a match {
@@ -98,4 +104,10 @@ object Option {
       case ::(h, t) => f(h) flatMap (b => traverse(t)(f).map(acc => b :: acc))
       case Nil => Some(Nil)
     }
+
+  def traverse_1[A, B](a: List[A])(f: A => Option[B]): Option[List[B]] =
+    a.foldRight[Option[List[B]]](Some(Nil))((h,t) => map2(f(h),t)(_ :: _))
+
+  def sequenceViaTraverse[A](a: List[Option[A]]): Option[List[A]] =
+    traverse(a)(x => x)
 }
