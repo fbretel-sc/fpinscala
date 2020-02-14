@@ -19,7 +19,7 @@ sealed trait Stream[+A] {
       case _ => z
     }
 
-  def exists(p: A => Boolean): Boolean = 
+  def exists(p: A => Boolean): Boolean =
     foldRight(false)((a, b) => p(a) || b) // Here `b` is the unevaluated recursive step that folds the tail of the stream. If `p(a)` returns `true`, `b` will never be evaluated and the computation terminates early.
 
   @annotation.tailrec
@@ -114,7 +114,7 @@ sealed trait Stream[+A] {
         else None
       case Empty => None
     }
-  def zipWith[B>:A](other: Stream[B])(f: (A, B) => B): Stream[B] =
+  def zipWith[B,C](other: Stream[B])(f: (A, B) => C): Stream[C] =
 /*
     unfold (this, other) { case(s1, s2) =>
       (s1, s2) match {
@@ -150,12 +150,27 @@ sealed trait Stream[+A] {
       case _ => false
     }
 
-  // test with Stream(1,2,3).tails.map(_.toList).toList
+  /*
+  The last element of `tails` is always the empty `Stream`, so we handle this as a special case, by appending it to the output.
+  */
   def tails: Stream[Stream[A]] =
     unfold(this) {
       case Empty => None
-      case Cons(_,t) => Some(t(),t())
-    }
+      case s => Some((s, s drop 1))
+    } append Stream(empty)
+
+  /*
+  The function can't be implemented using `unfold`, since `unfold` generates elements of the `Stream` from left to right. It can be implemented using `foldRight` though.
+
+  The implementation is just a `foldRight` that keeps the accumulated value and the stream of intermediate results, which we `cons` onto during each iteration. When writing folds, it's common to have more state in the fold than is needed to compute the result. Here, we simply extract the accumulated list once finished.
+  */
+  def scanRight[B](z: B)(f: (A, => B) => B): Stream[B] =
+    foldRight((z, Stream(z)))((a, p0) => {
+      // p0 is passed by-name and used in by-name args in f and cons. So use lazy val to ensure only one evaluation...
+      lazy val p1 = p0
+      val b2 = f(a, p1._1)
+      (b2, cons(b2, p1._2))
+    })._2
 }
 case object Empty extends Stream[Nothing]
 case class Cons[+A](h: () => A, t: () => Stream[A]) extends Stream[A]
@@ -170,7 +185,7 @@ object Stream {
   def empty[A]: Stream[A] = Empty
 
   def apply[A](as: A*): Stream[A] =
-    if (as.isEmpty) empty 
+    if (as.isEmpty) empty
     else cons(as.head, apply(as.tail: _*))
 
   val ones: Stream[Int] = Stream.cons(1, ones)
