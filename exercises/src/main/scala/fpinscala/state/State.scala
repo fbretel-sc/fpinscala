@@ -119,6 +119,9 @@ object RNG {
     // The crazy thing here is that we never pass any RNG
     fs.foldLeft(unit(List[A]()))((acc, ra) => map2(ra, acc)(_ :: _))
 
+  def intsViaSequence(count: Int): Rand[List[Int]] =
+    sequence(List.fill(count)(int))
+
   def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] = rng => {
     val (a, r1) = f(rng)
     g(a)(r1)
@@ -183,8 +186,33 @@ object State {
   def unit[S, A](a: A): State[S, A] = State(s => (a, s))
 
   def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] =
-    fs.foldLeft(unit[S, List[A]](List[A]()))((acc, s) => s.map2(acc)(_ :: _))
+    fs.reverse.foldLeft(unit[S, List[A]](List[A]()))((acc, s) => s.map2(acc)(_ :: _))
 
   type Rand[A] = State[RNG, A]
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+
+  def modify[S](f: S => S): State[S, Unit] = for {
+    s <- get // Gets the current state and assigns it to `s`.
+    _ <- set(f(s)) // Sets the new state to `f` applied to `s`.
+  } yield ()
+
+  def get[S]: State[S, S] = State(s => (s, s))
+
+  def set[S](s: S): State[S, Unit] = State(_ => ((), s))
 }
+
+object Machine  {
+  def update = (i: Input) => (s: Machine) =>
+    (i, s) match {
+      case (_, Machine(_, 0, _)) => s
+      case (Coin, Machine(false, _, _)) => s
+      case (Turn, Machine(true, _, _)) => s
+      case (Coin, Machine(true, candy, coin)) => Machine(locked = false, candy, coin + 1)
+      case (Turn, Machine(false, candy, coin)) => Machine(locked = true, candy - 1, coin)
+    }
+
+  def simulate(inputs: List[Input]): State[Machine, (Int, Int)] = for {
+    _ <- State.sequence(inputs map (State.modify[Machine] _ compose update))
+    s <- State.get
+  } yield (s.coins, s.candies)
+}
+
