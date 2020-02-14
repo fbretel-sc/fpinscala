@@ -20,3 +20,19 @@ lazy val answers = (project in file("answers"))
   .settings(
     name := "answers"
   )
+
+lazy val moduleToTest = if(System.getProperty("test") == "answers") answers else exercises
+
+lazy val tests = (project in file("tests"))
+  .settings(commonSettings ++ Seq(
+    scalacOptions in Test ++= Seq("-Yrangepos"),
+    libraryDependencies ++= Seq(
+      "org.specs2" %% "specs2-core" % "4.7.0" % "test",
+      "org.specs2" %% "specs2-junit" % "4.7.0"
+    ),
+    resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
+  ))
+  .settings(
+    name := "test"
+  )
+  .dependsOn(moduleToTest).aggregate(moduleToTest)
