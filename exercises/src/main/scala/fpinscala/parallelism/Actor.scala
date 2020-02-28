@@ -39,9 +39,9 @@ import annotation.tailrec
 final class Actor[A](strategy: Strategy)(handler: A => Unit, onError: Throwable => Unit = throw(_)) {
   self =>
 
-  private val tail = new AtomicReference(new Node[A]())
+  private val tail: AtomicReference[Node[A]] = new AtomicReference(new Node[A]())
   private val suspended = new AtomicInteger(1)
-  private val head = new AtomicReference(tail.get)
+  private val head: AtomicReference[Node[A]] = new AtomicReference(tail.get)
 
   /** Alias for `apply` */
   def !(a: A) {
