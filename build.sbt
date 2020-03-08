@@ -29,7 +29,9 @@ lazy val tests = (project in file("tests"))
     scalacOptions in Test ++= Seq("-Yrangepos"),
     libraryDependencies ++= Seq(
       "org.specs2" %% "specs2-core" % "4.7.0" % "test",
-      "org.specs2" %% "specs2-junit" % "4.7.0"
+      "org.specs2" %% "specs2-junit" % "4.7.0",
+      "org.specs2" %% "specs2-scalacheck" % "4.7.0" % "test",
+      "org.scalacheck" %% "scalacheck" % "1.14.1" % "test"
     ),
     resolvers += "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
   ))
