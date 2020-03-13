@@ -24,21 +24,71 @@ package firstIteration {
 
 }
 
-trait Prop {
+case class Prop(run: (TestCases,RNG) => Result) {
 
-  def check: Either[(FailedCase, SuccessCount), SuccessCount]
+  def &&(p: Prop): Prop = Prop(
+    (ts, rng) =>
+      //    {
+      //      val res1 = run(ts, rng)
+      //      if (res1.isFalsified)
+      //        res1
+      //      else {
+      //        val res2 = p.run(ts, rng)
+      //        if (res2.isFalsified)
+      //          res2
+      //        else
+      //          Passed
+      //      }
+      //    }
+      run(ts, rng) match {
+        case Passed => p.run(ts, rng)
+        case falsified: Falsified => falsified
+      }
+  )
 
-  def &&(p: Prop): Prop = new Prop {
-    def check: Either[(FailedCase, SuccessCount), SuccessCount] = for {
-      x <- Prop.this.check
-      y <- p.check
-    } yield x + y
-  }
+  def ||(p: Prop): Prop = Prop(
+    (ts, rng) => run(ts, rng) match {
+      case Passed => Passed
+      case f1: Falsified => p.run(ts, rng) match {
+        case Passed => Passed
+        case Falsified(failure, successes) => Falsified(f1.failure + "\n" + failure, successes)
+      }
+    }
+  )
 }
 
 object Prop {
   type FailedCase = String
   type SuccessCount = Int
+//  type MaxSize = Int
+  type TestCases = Int
+
+  sealed trait Result {
+    def isFalsified: Boolean
+  }
+  case object Passed extends Result {
+    def isFalsified = false
+  }
+  case class Falsified(failure: FailedCase,
+                       successes: SuccessCount) extends Result {
+    def isFalsified = true
+  }
+
+  def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop {
+    (n,rng) => randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
+      case (a, i) => try {
+        if (f(a)) Passed else Falsified(a.toString, i)
+      } catch { case e: Exception => Falsified(buildMsg(a, e), i) }
+    }.find(_.isFalsified).getOrElse(Passed)
+  }
+
+  def randomStream[A](g: Gen[A])(rng: RNG): Stream[A] =
+    Stream.unfold(rng)(rng => Some(g.sample.run(rng)))
+
+  def buildMsg[A](s: A, e: Exception): String =
+    s"test case: $s\n" +
+      s"generated an exception: ${e.getMessage}\n" +
+      s"stack trace:\n ${e.getStackTrace.mkString("\n")}"
 }
 
 object Gen {

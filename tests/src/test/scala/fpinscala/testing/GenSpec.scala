@@ -156,50 +156,50 @@ class GenSpec extends Specification with DataTables {
       }
     }
 
-    /*
     "Exercise 8.9: &&" in {
-          import fpinscala.testing.Prop._
-          def runFalsified1(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Falsified("test1 ko", 1)
-          def runFalsified2(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Falsified("test2 ko", 2)
-          def runPassed(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Passed
+      import fpinscala.testing.Prop._
+      def runFalsified1(testCases: TestCases, rng: RNG): Result = Falsified("test1 ko", 1)
+      def runFalsified2(testCases: TestCases, rng: RNG): Result = Falsified("test2 ko", 2)
+      def runPassed(testCases: TestCases, rng: RNG): Result = Passed
 
-          val propFalse1 = new Prop(runFalsified1)
-          val propFalse2 = new Prop(runFalsified2)
-          val propTrue = new Prop(runPassed)
+      val propFalse1 = new Prop(runFalsified1)
+      val propFalse2 = new Prop(runFalsified2)
+      val propTrue = new Prop(runPassed)
 
-          "propA" || "proB" || "expected result" |
-            propFalse1 !! propFalse2 !! propFalse1 |
-            propFalse2 !! propFalse1 !! propFalse2 |
-            propFalse1 !! propTrue !! propFalse1 |
-            propTrue !! propFalse1 !! propFalse1 |
-            propTrue !! propTrue !! propTrue |> {
-              (propA, propB, expected) =>
-                (propA && propB).run(1, 1, seed) must_== expected.run(1, 1, seed)
-            }
-        }
+      "propA" || "proB" || "expected result" |
+        propFalse1 !! propFalse2 !! propFalse1 |
+        propFalse2 !! propFalse1 !! propFalse2 |
+        propFalse1 !! propTrue !! propFalse1 |
+        propTrue !! propFalse1 !! propFalse1 |
+        propTrue !! propTrue !! propTrue |> {
+        (propA, propB, expected) =>
+          (propA && propB).run(1, seed) must_== expected.run(1, seed)
+      }
+    }
 
-        "Exercise 8.9: ||" in {
-          import fpinscala.testing.Prop._
-          def runFalsified1(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Falsified("test1 ko", 1)
-          def runFalsified2(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Falsified("test2 ko", 2)
-          def runFalsified1Or2(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Falsified("test1 ko\ntest2 ko", 2)
-          def runPassed(maxSize: MaxSize, testCases: TestCases, rng: RNG): Result = Passed
+    "Exercise 8.9: ||" in {
+      import fpinscala.testing.Prop._
+      def runFalsified1(testCases: TestCases, rng: RNG): Result = Falsified("test1 ko", 1)
+      def runFalsified2(testCases: TestCases, rng: RNG): Result = Falsified("test2 ko", 2)
+      def runFalsified1Or2(testCases: TestCases, rng: RNG): Result = Falsified("test1 ko\ntest2 ko", 2)
+      def runPassed(testCases: TestCases, rng: RNG): Result = Passed
 
-          val propFalse1 = new Prop(runFalsified1)
-          val propFalse2 = new Prop(runFalsified2)
-          val propFalse1Or2 = new Prop(runFalsified1Or2)
-          val propTrue = new Prop(runPassed)
+      val propFalse1 = new Prop(runFalsified1)
+      val propFalse2 = new Prop(runFalsified2)
+      val propFalse1Or2 = new Prop(runFalsified1Or2)
+      val propTrue = new Prop(runPassed)
 
-          "propA" || "proB" || "expected result" |
-            propFalse1 !! propFalse2 !! propFalse1Or2 |
-            propFalse1 !! propTrue !! propTrue |
-            propTrue !! propFalse1 !! propTrue |
-            propTrue !! propTrue !! propTrue |> {
-              (propA, propB, expected) =>
-                (propA || propB).run(1, 1, seed) must_== expected.run(1, 1, seed)
-            }
-        }
+      "propA" || "proB" || "expected result" |
+        propFalse1 !! propFalse2 !! propFalse1Or2 |
+        propFalse1 !! propTrue !! propTrue |
+        propTrue !! propFalse1 !! propTrue |
+        propTrue !! propTrue !! propTrue |> {
+        (propA, propB, expected) =>
+          (propA || propB).run(1, seed) must_== expected.run(1, seed)
+      }
+    }
 
+    /*
         "Exercise 8.10: unsized" in {
           val gen = Gen.boolean
           val sgen = gen.unsized
