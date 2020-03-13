@@ -132,6 +132,8 @@ sealed trait Stream[+A] {
       case _ => None
     }
 
+  def zip[B](s2: Stream[B]): Stream[(A,B)] = zipWith(s2)((_,_))
+
   def startsWith[B](s: Stream[B]): Boolean =
 /*
     // better: the map is actually a takeWhile

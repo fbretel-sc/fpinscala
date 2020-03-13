@@ -30,6 +30,7 @@ object RNG {
       (f(a), rng2)
     }
 
+  // Exercise 6.1
   @scala.annotation.tailrec
   def nonNegativeInt(rng: RNG): (Int, RNG) = {
     val (i, rng2) = rng.nextInt
@@ -38,6 +39,7 @@ object RNG {
     else (if (i < 0) -i else i, rng2)
   }
 
+  // Exercise 6.2: generate a Double between 0 and 1, not including 1.
   def double(rng: RNG): (Double, RNG) = {
     val (i, rng2) = nonNegativeInt(rng)
     (i.toDouble/Int.MaxValue, rng2)
