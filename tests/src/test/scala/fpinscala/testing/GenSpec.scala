@@ -162,9 +162,9 @@ class GenSpec extends Specification with DataTables {
       def runFalsified2(testCases: TestCases, rng: RNG): Result = Falsified("test2 ko", 2)
       def runPassed(testCases: TestCases, rng: RNG): Result = Passed
 
-      val propFalse1 = new Prop(runFalsified1)
-      val propFalse2 = new Prop(runFalsified2)
-      val propTrue = new Prop(runPassed)
+      val propFalse1 = secondIteration.Prop(runFalsified1)
+      val propFalse2 = secondIteration.Prop(runFalsified2)
+      val propTrue = secondIteration.Prop(runPassed)
 
       "propA" || "proB" || "expected result" |
         propFalse1 !! propFalse2 !! propFalse1 |
@@ -184,10 +184,10 @@ class GenSpec extends Specification with DataTables {
       def runFalsified1Or2(testCases: TestCases, rng: RNG): Result = Falsified("test1 ko\ntest2 ko", 2)
       def runPassed(testCases: TestCases, rng: RNG): Result = Passed
 
-      val propFalse1 = new Prop(runFalsified1)
-      val propFalse2 = new Prop(runFalsified2)
-      val propFalse1Or2 = new Prop(runFalsified1Or2)
-      val propTrue = new Prop(runPassed)
+      val propFalse1 = secondIteration.Prop(runFalsified1)
+      val propFalse2 = secondIteration.Prop(runFalsified2)
+      val propFalse1Or2 = secondIteration.Prop(runFalsified1Or2)
+      val propTrue = secondIteration.Prop(runPassed)
 
       "propA" || "proB" || "expected result" |
         propFalse1 !! propFalse2 !! propFalse1Or2 |
@@ -199,60 +199,88 @@ class GenSpec extends Specification with DataTables {
       }
     }
 
-    /*
-        "Exercise 8.10: unsized" in {
-          val gen = Gen.boolean
-          val sgen = gen.unsized
-          (sgen(0) must_== gen) and (sgen(42) must_== gen)
-        }
+    "Exercise 8.10: unsized" in {
+      val gen = Gen.boolean
+      val sgen = gen.unsized
+      (sgen(0) must_== gen) and (sgen(42) must_== gen)
+    }
 
-        "Exercise 8.11: convenience functions (map)" in {
-          def g(i: Int) = Gen.choose(1, i)
-          val sgen = SGen(g)
-          val stringSGen = sgen.map(i => "x" * i)
-          val maxLength = 6
-          val xes = sequenceFromTest(1000)(seed)(stringSGen(maxLength + 1).sample.run)._1
-          xes.forall { string => (string.toSet == Set('x')) && (string.size <= maxLength) } must beTrue
-        }
+    "Exercise 8.11: convenience functions (map)" in {
+      def g(i: Int) = Gen.choose(1, i)
+      val sgen = SGen(g)
+      val stringSGen = sgen.map(i => "x" * i)
+      val maxLength = 6
+      val xes = sequenceFromTest(1000)(seed)(stringSGen(maxLength + 1).sample.run)._1
+      xes.forall { string => (string.toSet == Set('x')) && (string.length <= maxLength) } must beTrue
+    }
 
-        "Exercise 8.11: convenience functions (flatMap)" in {
-          val minListLength = 6
-          val maxListLength = 12
-          def g(i: Int) = Gen.choose(minListLength, i)
-          val sgen = SGen(g)
-          def f(i: Int) = Gen.listOfN(i, Gen.choose(10, 20))
-          val listOfLists = sequenceFromTest(1000)(seed)(sgen.flatMap(f)(maxListLength + 1).sample.run)._1
-          (listOfLists.forall(_.size >= minListLength) must beTrue) and
-            (listOfLists.forall(_.size <= maxListLength) must beTrue) and
-            (listOfLists.forall(_.forall(elt => (elt >= 10) && (elt < 20))) must beTrue)
-        }
+    "Exercise 8.11: convenience functions (flatMap)" in {
+      val minListLength = 6
+      val maxListLength = 12
+      def g(i: Int) = Gen.choose(minListLength, i)
+      def f(i: Int) = Gen.listOfN(i, Gen.choose(10, 20))
+      val sgenFlatMap = SGen(g).flatMap(i => SGen(_ => f(i)))
 
-        "Exercise 8.12: listOf" in {
-          val sgen = Gen.listOf(Gen.unit(42))
-          sgen(4).sample.run(seed)._1 must_== List(42, 42, 42, 42)
-        }
+      val listOfLists = sequenceFromTest(1000)(seed)(sgenFlatMap(maxListLength + 1).sample.run)._1
+      (listOfLists.forall(_.size >= minListLength) must beTrue) and
+        (listOfLists.forall(_.size <= maxListLength) must beTrue) and
+        (listOfLists.forall(_.forall(elt => (elt >= 10) && (elt < 20))) must beTrue)
+    }
 
-        "Exercise 8.13: listOf1" in {
-          val sgen1 = Gen.listOf1(Gen.choose(10, 20))
-          val listOfLists = sequenceFromTest(10)(seed)(sgen1(0).sample.run)._1
-          println(listOfLists)
-          listOfLists.forall(_.size == 1) must beTrue
-        }
+    "Exercise 8.12: listOf" in {
+      val sgen = Gen.listOf(Gen.unit(42))
+      sgen(4).sample.run(seed)._1 must_== List(42, 42, 42, 42)
+    }
 
-        // The validity of maxProp1 is not really tested here!!
-        "Exercise 8.13: maxProp with listOf1" in {
-          val prop = Gen.maxProp1
-          val result = prop.run(100, 100, seed)
-          result.isFalsified must beFalse
-        }
+    val smallInt = Gen.choose(-10,10)
 
-        // The validity of sortedProp is not really tested here!!
-        "Exercise 8.14: sortedProp" in {
-          val prop = Gen.sortedProp
-          val result = prop.run(100, 100, seed)
-          result.isFalsified must beFalse
+    "Exercise 8.13: maxProp with listOf" in {
+      val maxProp = Prop.forAll(Gen.listOf(smallInt)) { l =>
+        val max = l.max
+        !l.exists(_ > max) // No value greater than `max` should exist in `l`
+      }
+
+      val result = maxProp.run(100, 100, seed)
+      result.isFalsified must beTrue
+    }
+
+    "Exercise 8.13: listOf1" in {
+      val sgen1 = Gen.listOf1(Gen.choose(10, 20))
+      val listOfLists = sequenceFromTest(10)(seed)(sgen1(0).sample.run)._1
+      // println(listOfLists)
+      listOfLists.forall(_.size == 1) must beTrue
+    }
+
+    // The validity of maxProp1 is not really tested here!!
+    "Exercise 8.13: maxProp with listOf1" in {
+      val maxProp = Prop.forAll(Gen.listOf1(smallInt)) { l =>
+        val max = l.max
+        !l.exists(_ > max) // No value greater than `max` should exist in `l`
+      }
+
+      val result = maxProp.run(100, 100, seed)
+      result.isFalsified must beFalse
+    }
+
+    // The validity of sortedProp is not really tested here!!
+    "Exercise 8.14: sortedProp" in {
+      // Exercise 8.14
+      val sortedProp = Prop.forAll(Gen.listOf1(smallInt)) { l =>
+        val sorted = l.sorted
+
+        // // Not efficient as it doesn't short-circuit
+        // sorted.foldLeft((true, l.head)) { case ((ok, prev), i) => (ok && (prev <= i), i) }._1
+
+        def step(h: Int, t: List[Int]): Boolean = t match {
+          case Nil => true
+          case head :: tail => if (h > head) false else step(head, tail)
         }
-    */
+        step(sorted.head, sorted.tail)
+      }
+
+      val result = sortedProp.run(100, 100, seed)
+      result.isFalsified must beFalse
+    }
 
   }
 }
