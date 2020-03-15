@@ -1,5 +1,7 @@
 package fpinscala.testing
 
+import fpinscala.parallelism.Par
+import fpinscala.parallelism.Par.Par
 import org.specs2.mutable._
 import org.junit.runner.RunWith
 import org.specs2.runner.JUnitRunner
@@ -279,6 +281,59 @@ class GenSpec extends Specification with DataTables {
       }
 
       val result = sortedProp.run(100, 100, seed)
+      result.isFalsified must beFalse
+    }
+
+    "Par: map(unit(1))(_ + 1) == unit(2)" in {
+      val p2 = Prop.checkPar {
+        Prop.equal(
+          Par.map(Par.unit(1))(_ + 1),
+          Par.unit(2)
+        )
+      }
+
+      val result = p2.run(100, 100, seed)
+      result.isFalsified must beFalse
+    }
+
+    val parInts: Gen[Par[Int]] = Gen.choose(0, 10) map Par.unit
+
+    "Par: map(y)(x => x) == y" in {
+      val p4 = Prop.forAllPar(parInts)(n => Prop.equal(Par.map(n)(y => y), n))
+
+      val result = p4.run(100, 100, seed)
+      result.isFalsified must beFalse
+    }
+
+    // Exercise 8.16 - COPIED FROM ANSWER, runs indefinitely (??)
+    val parInts2: Gen[Par[Int]] = Gen.choose(-100,100)
+      .listOfN(Gen.choose(0, 100))
+      .map(l =>
+        l.foldLeft(Par.unit(0))((acc, i) =>
+          Par.fork { Par.map2(acc, Par.unit(i))(_ + _) })
+      )
+
+    // Exercise 8.17
+    "Exercise 8.17: Par fork(x) == x" in {
+       val prop = Prop.forAllPar(parInts)(n => Prop.equal(Par.fork(n), n))
+
+      val result = prop.run(100, 100, seed)
+      result.isFalsified must beFalse
+    }
+
+    // Exercise 8.18
+    "Exercise 8.18: takeWhile" in {
+      val p = (i: Int) => i < 0
+
+      val p1 = Prop.forAll(Gen.listOf(Gen.choose(-1000, 1000))) { l =>
+        l.takeWhile(p).dropWhile(p).isEmpty
+      }
+
+      val p2 = Prop.forAll(Gen.listOf(Gen.choose(-1000, 1000))) { l =>
+        l.takeWhile(p) ::: l.dropWhile(p) == l
+      }
+
+      val result = (p1 && p2).run(100, 100, seed)
       result.isFalsified must beFalse
     }
 

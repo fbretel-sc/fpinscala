@@ -44,7 +44,7 @@ package secondIteration {
         //      }
         //    }
         run(ts, rng) match {
-          case Passed => p.run(ts, rng)
+          case Passed | Proved => p.run(ts, rng)
           case falsified: Falsified => falsified
         }
     )
@@ -52,11 +52,11 @@ package secondIteration {
     // Exercice 8.9
     def ||(p: Prop): Prop = Prop(
       (ts, rng) => run(ts, rng) match {
-        case Passed => Passed
         case f1: Falsified => p.run(ts, rng) match {
-          case Passed => Passed
           case Falsified(failure, successes) => Falsified(f1.failure + "\n" + failure, successes)
+          case x => x
         }
+        case x => x
       }
     )
   }
@@ -68,18 +68,18 @@ case class Prop(run: (MaxSize,TestCases,RNG) => Result) {
   def &&(p: Prop): Prop = Prop(
     (max, ts, rng) =>
       run(max, ts, rng) match {
-        case Passed => p.run(max, ts, rng)
+        case Passed | Proved => p.run(max, ts, rng)
         case falsified: Falsified => falsified
       }
   )
 
   def ||(p: Prop): Prop = Prop(
     (max, ts, rng) => run(max, ts, rng) match {
-      case Passed => Passed
       case f1: Falsified => p.run(max, ts, rng) match {
-        case Passed => Passed
         case Falsified(failure, successes) => Falsified(f1.failure + "\n" + failure, successes)
+        case x => x
       }
+      case x => x
     }
   )
 }
@@ -100,6 +100,9 @@ object Prop {
                        successes: SuccessCount) extends Result {
     def isFalsified = true
   }
+  case object Proved extends Result {
+    def isFalsified = false
+  }
 
   def randomStream[A](g: Gen[A])(rng: RNG): Stream[A] =
     Stream.unfold(rng)(rng => Some(g.sample.run(rng)))
@@ -109,16 +112,16 @@ object Prop {
       s"generated an exception: ${e.getMessage}\n" +
       s"stack trace:\n ${e.getStackTrace.mkString("\n")}"
 
-    def apply(f: (TestCases,RNG) => Result): Prop =
-      Prop { (_,n,rng) => f(n,rng) }
+  def apply(f: (TestCases,RNG) => Result): Prop =
+    Prop { (_,n,rng) => f(n,rng) }
 
-    def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop {
-      (n,rng) => randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
-        case (a, i) => try {
-          if (f(a)) Passed else Falsified(a.toString, i)
-        } catch { case e: Exception => Falsified(buildMsg(a, e), i) }
-      }.find(_.isFalsified).getOrElse(Passed)
-    }
+  def forAll[A](as: Gen[A])(f: A => Boolean): Prop = Prop {
+    (n,rng) => randomStream(as)(rng).zip(Stream.from(0)).take(n).map {
+      case (a, i) => try {
+        if (f(a)) Passed else Falsified(a.toString, i)
+      } catch { case e: Exception => Falsified(buildMsg(a, e), i) }
+    }.find(_.isFalsified).getOrElse(Passed)
+  }
 
   def forAll[A](g: SGen[A])(f: A => Boolean): Prop =
     forAll(g(_))(f)
@@ -145,7 +148,32 @@ object Prop {
         println(s"! Falsified after ${f.successes} passed tests:\n ${f.failure}")
       case Passed =>
         println(s"+ OK, passed $testCases tests.")
+      case Proved =>
+        println(s"+ OK, proved property.")
     }
+
+  def check(p: => Boolean): Prop = Prop { (_, _, _) =>
+    if (p) Passed else Falsified("()", 0)
+  }
+
+  def equal[A](p: Par[A], p2: Par[A]): Par[Boolean] =
+    Par.map2(p,p2)(_ == _)
+
+  val S: Gen[ExecutorService] = weighted(
+    choose(1,4).map(Executors.newFixedThreadPool) -> .75,
+    unit(Executors.newCachedThreadPool) -> .25) // `a -> b` is syntax sugar for `(a,b)`
+
+  def forAllPar[A](g: Gen[A])(f: A => Par[Boolean]): Prop =
+    forAll(S.map2(g)((_,_))) { case (s,a) => f(a)(s).get }
+
+  def checkPar(p: Par[Boolean]): Prop =
+    forAllPar(Gen.unit(()))(_ => p)
+
+  def forAllPar2[A](g: Gen[A])(f: A => Par[Boolean]): Prop =
+    forAll(S ** g) { case (s,a) => f(a)(s).get }
+
+  def forAllPar3[A](g: Gen[A])(f: A => Par[Boolean]): Prop =
+    forAll(S ** g) { case s ** a => f(a)(s).get }
 }
 
 object Gen {
@@ -192,6 +220,22 @@ object Gen {
   def weighted[A](g1: (Gen[A],Double), g2: (Gen[A],Double)): Gen[A] =
     // Wrong: Gen(State(RNG.double)) flatMap { d => if (d < g1._2/(g1._2 + g2._2)) g1._1 else g2._1 }
     Gen(State(RNG.double)) flatMap { d => if (d < g1._2.abs/(g1._2.abs + g2._2.abs)) g1._1 else g2._1 }
+
+  // Custom extractor
+  object ** {
+    def unapply[A,B](p: (A,B)) = Some(p)
+  }
+
+  // Exercice 8.19 - COPIED FROM ANSWER
+  def genStringFn[A](g: Gen[A]): Gen[String => A] = Gen {
+    State { (rng: RNG) =>
+      val (seed, rng2) = rng.nextInt // we still use `rng` to produce a seed, so we get a new function each time
+      // By using hashCode(), we use the whole information of the String. Which would not be the case with length().
+      val f = (s: String) => g.sample.run(RNG.Simple(seed.toLong ^ s.hashCode.toLong))._1
+      (f, rng2)
+    }
+  }
+
 }
 
 case class Gen[+A](sample: State[RNG,A]) {
@@ -202,6 +246,12 @@ case class Gen[+A](sample: State[RNG,A]) {
 
   // Exercice 8.10
   def unsized: SGen[A] = SGen(_ => this)
+
+  def map2[B,C](g: Gen[B])(f: (A,B) => C): Gen[C] =
+    Gen(sample.map2(g.sample)(f))
+
+  def **[B](g: Gen[B]): Gen[(A,B)] =
+    (this map2 g)((_,_))
 }
 
 case class SGen[+A](forSize: Int => Gen[A]) {
