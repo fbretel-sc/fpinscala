@@ -226,7 +226,7 @@ object Gen {
     def unapply[A,B](p: (A,B)) = Some(p)
   }
 
-  // Exercice 8.19 - COPIED FROM ANSWER
+  // Exercice 8.19 - COPIED FROM ANSWERS
   def genStringFn[A](g: Gen[A]): Gen[String => A] = Gen {
     State { (rng: RNG) =>
       val (seed, rng2) = rng.nextInt // we still use `rng` to produce a seed, so we get a new function each time
