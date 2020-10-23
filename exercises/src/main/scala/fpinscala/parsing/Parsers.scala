@@ -17,6 +17,13 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
 
     def map[B](f: A => B): Parser[B] = self.map(p)(f)
     def many: Parser[List[A]] = self.many(p)
+
+    def slice: Parser[String] = self.slice(p)
+
+    def **[B](p2: => Parser[B]): Parser[(A,B)] =
+      self.product(p,p2)
+    def product[B](p2: => Parser[B]): Parser[(A,B)] =
+      self.product(p,p2)
   }
 
   def succeed[A](a: A): Parser[A] = string("") map (_ => a)
@@ -36,6 +43,32 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
   def many[A](p: Parser[A]): Parser[List[A]]
   def map[A,B](a: Parser[A])(f: A => B): Parser[B]
 //  def many[A](p: Parser[A]): Parser[Int] = map(many(p))(_.size)
+
+  val numA: Parser[Int] = char('a').many.map(_.size)
+
+  def slice[A](p: Parser[A]): Parser[String]
+
+  /* Runs one parser, followed by another, assuming the first is successful. */
+  def product[A,B](p: Parser[A], p2: => Parser[B]): Parser[(A,B)]
+
+  // Exercise 9.1
+  def map2[A,B,C](p: Parser[A], p2: => Parser[B])(f: (A,B) => C): Parser[C] =
+//    map(product(p, p2)) { case (a, b) => f(a,b) }
+    product(p, p2) map f.tupled
+
+  // Exercise 9.3
+  def many[A](p: Parser[A]): Parser[List[A]] =
+    map2(p, many(p))(_ :: _) or succeed(List())
+
+  // Exercise 9.4
+  // Using map2 and succeed, implement the listOfN combinator from earlier.
+  def listOfN[A](n: Int, p: Parser[A]): Parser[List[A]] =
+    if (n == 0) succeed(List())
+    else map2(p, listOfN(n-1, p))(_ :: _)
+
+  // Exercise 9.5 - a separate combinator to deal with non-strictness like in chapter 7.
+  // Cheated: trick is to use function that provides non-strictness, but a bit cumbersome to use.
+  def wrap[A](p: => Parser[A]): Parser[A]
 
   object Laws {
     val ls = List(
@@ -57,6 +90,8 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
       () => run(and(zeroOrMore(int('a')), oneOrMore(int('b'))))("bbb") == Right((0,3)),
       () => run(and(zeroOrMore(int('a')), oneOrMore(int('b'))))("aaaab") == Right((4,1)),
       (input: String) => run(zeroOrMore(int('a')))(input) == run(or(empty, oneOrMore(int('a'))))(input)
+
+//      () =>  run(slice(('a'|'b').many))("aaba") == Right("aaba")
     )
 
     def equal[A](p1: Parser[A], p2: Parser[A])(in: Gen[String]): Prop = Prop.forAll(in)(s => run(p1)(s) == run(p2)(s))
@@ -64,6 +99,9 @@ trait Parsers[Parser[+_]] { self => // so inner classes may call methods of trai
     def mapLaw[A](p: Parser[A])(in: Gen[String]): Prop = equal(p, p.map(a => a))(in)
 
     def succeedLaw[A](a: A)(in: Gen[String]): Prop = Prop.forAll(in)(s => run(succeed(a))(s) == Right(a))
+
+    // Exercise 9.2
+    def productLaw = ???
   }
 }
 

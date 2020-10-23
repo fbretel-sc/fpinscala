@@ -7,11 +7,6 @@ import org.specs2.runner.JUnitRunner
 @RunWith(classOf[JUnitRunner])
 class ParsersSpec extends Specification {
 
-  val P: Parsers[String]
-  import P._
-
-  "The parser laws  should be correct" in {
-    run(or(string("abra"),string("cadabra")))("abra") == Right("abra")
-  }
+  // For all the beginning of the chapter, we can't test since there is no Parsers implementation.
 
 }
