@@ -6,12 +6,16 @@ import fpinscala.monoids.Monoid.{monoidFunctionLaws, monoidLaws}
 import fpinscala.state.RNG
 import fpinscala.testing.Gen
 import org.junit.runner.RunWith
+import org.scalacheck.Arbitrary
+import org.scalacheck.Arbitrary.arbitrary
+import org.scalacheck.{Prop => SCProp}
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
+import org.specs2.ScalaCheck
 
 @RunWith(classOf[JUnitRunner])
-class MonoidSpec extends Specification {
+class MonoidSpec extends Specification with ScalaCheck {
 
   import fpinscala.testing.Prop
   import Prop._
@@ -30,7 +34,7 @@ class MonoidSpec extends Specification {
   def intGen(max: Int): Gen[MaxSize] = Gen.choose(0, max)
   def listGen[A](gen: Gen[A]): Gen[List[A]] = gen.listOfN(intGen(10))
   val stringGen: Gen[String] = intGen(10) flatMap stringN
-  def optionGen[A](gen: Gen[A]): Gen[Option[A]] =
+  def optGen[A](gen: Gen[A]): Gen[Option[A]] =
     for {
       b <- Gen.boolean
       a <- gen
@@ -52,10 +56,21 @@ class MonoidSpec extends Specification {
       checkMonoidLaws(Monoid.booleanAnd, Gen.boolean)
     }
 
+    "Exercise 10.1.1: Monoid laws do not hold for integer subtraction" in {
+      val intSubtraction: Monoid[Int] = new Monoid[Int] {
+        override def op(a1: Int, a2: Int): Int = a1 - a2
+
+        override def zero: Int = 0
+      }
+      val prop = monoidLaws(intSubtraction, intGen(IntGenMax))
+      val result = prop.run(100, 100, RNG.Simple(0))
+      result.isFalsified must beTrue
+    }
+
     "Exercise 10.2: Monoid instance for combining Option values" in {
-      checkMonoidLaws(Monoid.optionMonoid[Int], optionGen(intGen(IntGenMax)))
-      checkMonoidLaws(Monoid.optionMonoid[Boolean], optionGen(Gen.boolean))
-      checkMonoidLaws(Monoid.optionMonoid[String], optionGen(stringGen))
+      checkMonoidLaws(Monoid.optionMonoid[Int], optGen(intGen(IntGenMax)))
+      checkMonoidLaws(Monoid.optionMonoid[Boolean], optGen(Gen.boolean))
+      checkMonoidLaws(Monoid.optionMonoid[String], optGen(stringGen))
     }
 
     "Exercise 10.3: Monoid instance for endofunctions" in {
@@ -118,7 +133,7 @@ class MonoidSpec extends Specification {
         rStub <- stringGen
       } yield {
         val part = Monoid.Part(lStub, words, rStub)
-        println(part)
+        //        println(part)
         part
       }
       val wcGen: Gen[Monoid.WC] = Gen.union(stubGen, partGen)
@@ -136,53 +151,56 @@ class MonoidSpec extends Specification {
         val whitespaceCharGen: Gen[Char] = oneOf(List(9, 10, 32).map(_.toChar))
         val nonWhitespaceCharGen: Gen[Char] = oneOf(List(33, 127).map(_.toChar))
         val charGen = Gen.weighted((whitespaceCharGen, 1), (nonWhitespaceCharGen, 9))
+
         def strGen(n: Int) = Gen.listOfN(n, charGen).map(_.mkString)
+
         intGen(10) flatMap strGen
       }
+
       def wordCount(s: String) = {
         val s1 = s.trim
         if (s1 == "") 0 else s1.split("""\s+""").length
       }
+
       checkProp(Prop.forAll(strGen) { s: String => Monoid.countWords(s) == wordCount(s) })
     }
 
-  }
+    val plus = (_: Int) + (_: Int)
 
-  /*
-
-    val plus = (_:Int) + (_:Int)
-    private def testFoldable[F[_]](foldable: Foldable[F], f: List[Int] => F[Int]) = {
-      forAll("ints") { ints: List[Int] =>
+    def testFoldable[F[_]](foldable: Foldable[F], f: List[Int] => F[Int]) = {
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
         val intsF = f(ints)
         val sum = ints.sum
-        assert(foldable.foldRight(intsF)(0)(plus) == sum)
-        assert(foldable.foldLeft(intsF)(0)(plus) == sum)
-        assert(foldable.foldMap(intsF)(_.toString)(Monoid.stringMonoid) ==
-          ints.map(_.toString).fold("")(_ + _))
-        assert(foldable.concatenate(intsF)(Monoid.intAddition) == sum)
-  //      assert(foldable.toList(intsF) == ints)
-      }
+
+        foldable.foldRight(intsF)(0)(plus) == sum &&
+          foldable.foldLeft(intsF)(0)(plus) == sum &&
+          foldable.foldMap(intsF)(_.toString)(Monoid.stringMonoid) ==
+            ints.map(_.toString).fold("")(_ + _) &&
+          foldable.concatenate(intsF)(Monoid.intAddition) == sum &&
+          foldable.toList(intsF) == ints
+      })
     }
 
-    behavior of "10.12.1 ListFoldable"
-    it should "work" in {
-      testFoldable(ListFoldable, identity)
+    "Exercise 10.12: ListFoldable" in {
+      testFoldable(ListFoldable, identity[List[Int]])
     }
 
-    behavior of "10.12.2 IndexedSeqFoldable"
-    it should "work" in {
+    "Exercise 10.12: IndexedSeqFoldable" in {
       testFoldable(IndexedSeqFoldable, _.toIndexedSeq)
     }
 
-    behavior of "10.12.3 StreamFoldable"
-    it should "work" in {
+    "Exercise 10.12: StreamFoldable" in {
       testFoldable(StreamFoldable, _.toStream)
     }
 
-    private implicit def arbTree[T](implicit ev: Arbitrary[T]): Arbitrary[Tree[T]] = {
+
+    implicit def arbTree[T](implicit ev: Arbitrary[T]): Arbitrary[Tree[T]] = {
+      import org.scalacheck.Gen
+
       val maxDepth = 10 // to prevent StackOverflows
 
       def createLeaf: Gen[Tree[T]] = arbitrary[T] map (Leaf(_))
+
       def createBranch(depth: Int): Gen[Tree[T]] = {
         for {
           lIsLeaf <- arbitrary[Boolean]
@@ -191,64 +209,72 @@ class MonoidSpec extends Specification {
           r <- createTree(rIsLeaf, depth)
         } yield Branch(l, r)
       }
+
       def createTree(isLeaf: Boolean, depth: Int): Gen[Tree[T]] =
         if (isLeaf || depth >= maxDepth) createLeaf else createBranch(depth + 1)
 
       Arbitrary {
-        arbitrary[Boolean] flatMap { createTree(_, 0) }
+        arbitrary[Boolean] flatMap {
+          createTree(_, 0)
+        }
       }
     }
 
-    private def treeList[A](as: Tree[A]): List[A] = as match {
+    def treeList[A](as: Tree[A]): List[A] = as match {
       case Leaf(a) => List(a)
-      case Branch(l,r) => treeList(l) ::: treeList(r)
+      case Branch(l, r) => treeList(l) ::: treeList(r)
     }
 
-    behavior of "10.13 TreeFoldable"
-    it should "work" in {
-    def treeSum(ints: Tree[Int]): Int = ints match {
-      case Leaf(i) => i
-      case Branch(l,r) => treeSum(l) + treeSum(r)
-    }
+    "Exercise 10.13: TreeFoldable" in {
+      def treeSum(ints: Tree[Int]): Int = ints match {
+        case Leaf(i) => i
+        case Branch(l, r) => treeSum(l) + treeSum(r)
+      }
 
-    val foldable = TreeFoldable
-    forAll("ints") { ints: Tree[Int] =>
+      val foldable = TreeFoldable
+      SCProp.forAll(arbTree[Int].arbitrary) { ints: Tree[Int] =>
         val sum = treeSum(ints)
-        assert(foldable.foldRight(ints)(0)(plus) == sum)
-        assert(foldable.foldLeft(ints)(0)(plus) == sum)
-        assert(foldable.foldMap(ints)(_.toInt)(Monoid.intAddition) == sum)
-        assert(foldable.concatenate(ints)(Monoid.intAddition) == sum)
-  //      assert(foldable.toList(ints) == treeList(ints))
+        foldable.foldRight(ints)(0)(plus) == sum &&
+        foldable.foldLeft(ints)(0)(plus) == sum &&
+        foldable.foldMap(ints)(identity)(Monoid.intAddition) == sum &&
+        foldable.concatenate(ints)(Monoid.intAddition) == sum &&
+        foldable.toList(ints) == treeList(ints)
       }
     }
 
-    behavior of "10.14 OptionFoldable"
-    it should "work" in {
+    "Exercise 10.14: OptionFoldable" in {
       val foldable = OptionFoldable
-      forAll("ints") { ints: Option[Int] =>
+      checkProp(Prop.forAll(optGen(intGen(IntGenMax))) { ints: Option[Int] =>
         val sum = ints.fold(0)(_ + 0)
-        assert(foldable.foldRight(ints)(0)(plus) == sum)
-        assert(foldable.foldLeft(ints)(0)(plus) == sum)
-        assert(foldable.foldMap(ints)(_.toInt)(Monoid.intAddition) == sum)
-        assert(foldable.concatenate(ints)(Monoid.intAddition) == sum)
-  //      assert(foldable.toList(ints) == ints.fold(List[Int]())(List(_)))
-      }
+        foldable.foldRight(ints)(0)(plus) == sum &&
+        foldable.foldLeft(ints)(0)(plus) == sum &&
+        foldable.foldMap(ints)(_.toInt)(Monoid.intAddition) == sum &&
+        foldable.concatenate(ints)(Monoid.intAddition) == sum &&
+        foldable.toList(ints) == ints.fold(List[Int]())(List(_))
+      })
     }
 
-    behavior of "10.15 Foldable.toList"
-    it should "work" in {
-      forAll("ints") { ints: List[Int] =>
-        assert(ListFoldable.toList(ints) == ints)
-        assert(IndexedSeqFoldable.toList(ints.toIndexedSeq) == ints)
-        assert(StreamFoldable.toList(ints.toStream) == ints)
-      }
-      forAll("ints") { ints: Tree[Int] =>
-        assert(TreeFoldable.toList(ints) == treeList(ints))
-      }
-      forAll("ints") { ints: Option[Int] =>
-        assert(OptionFoldable.toList(ints) == ints.fold(List[Int]())(List(_)))
+    "Exercise 10.15: Foldable.toList" in {
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        ListFoldable.toList(ints) == ints
+        IndexedSeqFoldable.toList(ints.toIndexedSeq) == ints
+        StreamFoldable.toList(ints.toStream) == ints
+      })
+    }
+    "Exercise 10.15: TreeFoldable.toList" in {
+      SCProp.forAll(arbTree[Int].arbitrary) { ints: Tree[Int] =>
+        TreeFoldable.toList(ints) == treeList(ints)
       }
     }
+    "Exercise 10.15: OptionFoldable.toList" in {
+      checkProp(Prop.forAll(optGen(intGen(IntGenMax))) { ints: Option[Int] =>
+        OptionFoldable.toList(ints) == ints.fold(List[Int]())(List(_))
+      })
+    }
+
+  }
+  /*
+
 
     behavior of "10.16 productMonoid"
     it should "work" in {
