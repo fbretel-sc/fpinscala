@@ -1,9 +1,12 @@
 package fpinscala.monoids
 
+import java.util.concurrent.Executors
+
 import fpinscala.monoids.Monoid.{monoidFunctionLaws, monoidLaws}
 import fpinscala.state.RNG
 import fpinscala.testing.Gen
 import org.junit.runner.RunWith
+import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 
@@ -13,9 +16,9 @@ class MonoidSpec extends Specification {
   import fpinscala.testing.Prop
   import Prop._
 
-  def runProp(prop: Prop, testCases: TestCases): Result = {
-    import fpinscala.state.RNG.Simple
-    prop.run(100, testCases, Simple(0))
+  def checkProp(prop: Prop, testCases: TestCases = 100): MatchResult[Boolean] = {
+    val result = prop.run(100, testCases, RNG.Simple(0))
+    result.isFalsified must beFalse
   }
 
   // Lifted from fpinscala-muc/fpinscala-skasinsk
@@ -24,12 +27,9 @@ class MonoidSpec extends Specification {
 
   val IntGenMax = 100
 
-  def intGen(max: Int) = Gen.choose(0, max)
-
-  def listGen[A](gen: Gen[A]) = gen.listOfN(intGen(10))
-
-  val stringGen = intGen(10) flatMap (stringN)
-
+  def intGen(max: Int): Gen[MaxSize] = Gen.choose(0, max)
+  def listGen[A](gen: Gen[A]): Gen[List[A]] = gen.listOfN(intGen(10))
+  val stringGen: Gen[String] = intGen(10) flatMap stringN
   def optionGen[A](gen: Gen[A]): Gen[Option[A]] =
     for {
       b <- Gen.boolean
@@ -52,112 +52,103 @@ class MonoidSpec extends Specification {
       checkMonoidLaws(Monoid.booleanAnd, Gen.boolean)
     }
 
-    "Exercise 10.2: Monoid instance for combining Option values." in {
+    "Exercise 10.2: Monoid instance for combining Option values" in {
       checkMonoidLaws(Monoid.optionMonoid[Int], optionGen(intGen(IntGenMax)))
       checkMonoidLaws(Monoid.optionMonoid[Boolean], optionGen(Gen.boolean))
       checkMonoidLaws(Monoid.optionMonoid[String], optionGen(stringGen))
     }
 
-    "Exercise 10.3: Monoid instance for endofunctions." in {
+    "Exercise 10.3: Monoid instance for endofunctions" in {
       val boolEndoGen: Gen[Boolean => Boolean] =
         Gen.boolean.map(p => if (p) { x: Boolean => !x } else identity[Boolean])
-      val prop = monoidFunctionLaws(Monoid.endoMonoid[Boolean], boolEndoGen, Gen.boolean)
-      val result = prop.run(100, 100, RNG.Simple(0))
-      result.isFalsified must beFalse
+      checkProp(monoidFunctionLaws(Monoid.endoMonoid[Boolean], boolEndoGen, Gen.boolean))
+    }
+
+    "Exercise 10.5: Monoid.foldMap" in {
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        val intsAsStrings = ints map (_.toString)
+        Monoid.foldMap(intsAsStrings, Monoid.intAddition)(_.toInt) == ints.sum
+      })
+    }
+
+    "Exercise 10.6: Monoid.foldRight" in {
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        Monoid.foldRight(ints)(0)(_ - _) == ints.foldRight(0)(_ - _)
+      })
+    }
+
+    "Exercise 10.6: Monoid.foldLeft" in {
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        Monoid.foldLeft(ints)(0)(_ - _) == ints.foldLeft(0)(_ - _)
+      })
+    }
+
+    "Exercise 10.7: Monoid.foldMapV" in {
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        val intsAsStrings = ints.map(_.toString).toIndexedSeq
+        Monoid.foldMapV(intsAsStrings, Monoid.intAddition)(_.toInt) == ints.sum
+      })
+    }
+
+    "Exercise 10.8: parallel Monoid.foldMap" in {
+      import fpinscala.parallelism.Nonblocking.Par
+      val es = Executors.newFixedThreadPool(4)
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        val intsAsStrings = ints.map(_.toString).toIndexedSeq
+        val parSum = Monoid.parFoldMap(intsAsStrings, Monoid.intAddition)(_.toInt)
+        Par.run(es)(parSum) == ints.sum
+      })
+    }
+
+    "Exercise 10.9: ordered" in {
+      assert(Monoid.ordered(IndexedSeq()))
+      assert(Monoid.ordered(IndexedSeq(1)))
+      assert(Monoid.ordered(IndexedSeq(-2, 0, 1, 3, 5)))
+      assert(!Monoid.ordered(IndexedSeq(-2, 0, 3, 1, 6)))
+      checkProp(Prop.forAll(listGen(intGen(IntGenMax))) { ints: List[Int] =>
+        Monoid.ordered(ints.toIndexedSeq) == (ints == ints.sorted)
+      })
+    }
+
+    "Exercise 10.10: wcMonoid" in {
+      val stubGen = stringGen map Monoid.Stub
+      val partGen = for {
+        lStub <- stringGen
+        words <- intGen(10)
+        rStub <- stringGen
+      } yield {
+        val part = Monoid.Part(lStub, words, rStub)
+        println(part)
+        part
+      }
+      val wcGen: Gen[Monoid.WC] = Gen.union(stubGen, partGen)
+      val laws = Monoid.monoidLaws(Monoid.wcMonoid, wcGen)
+      checkProp(laws)
+    }
+
+    def oneOf[T](xs: Iterable[T]): Gen[T] = {
+      val vector = xs.toVector
+      Gen.choose(0, vector.size - 1).map(vector(_))
+    }
+
+    "Exercise 10.11: countWords" in {
+      val strGen: Gen[String] = {
+        val whitespaceCharGen: Gen[Char] = oneOf(List(9, 10, 32).map(_.toChar))
+        val nonWhitespaceCharGen: Gen[Char] = oneOf(List(33, 127).map(_.toChar))
+        val charGen = Gen.weighted((whitespaceCharGen, 1), (nonWhitespaceCharGen, 9))
+        def strGen(n: Int) = Gen.listOfN(n, charGen).map(_.mkString)
+        intGen(10) flatMap strGen
+      }
+      def wordCount(s: String) = {
+        val s1 = s.trim
+        if (s1 == "") 0 else s1.split("""\s+""").length
+      }
+      checkProp(Prop.forAll(strGen) { s: String => Monoid.countWords(s) == wordCount(s) })
     }
 
   }
 
   /*
-
-    behavior of "10.5 foldMap"
-    it should "work" in {
-      forAll("ints") { ints: List[Int] =>
-        val intsAsStrings = ints map(_.toString)
-        assert(Monoid.foldMap(intsAsStrings, Monoid.intAddition)(_.toInt) == ints.sum)
-      }
-    }
-
-    behavior of "10.6.1 foldRight"
-    it should "work" in {
-      val plus = (_:Int) + (_:Int)
-      forAll("ints") { ints: List[Int] =>
-        assert(Monoid.foldRight(ints)(0)(plus) == ints.sum)
-      }
-    }
-
-    behavior of "10.6.2 foldLeft"
-    it should "work" in {
-      val plus = (_:Int) + (_:Int)
-      forAll("ints") { ints: List[Int] =>
-        assert(Monoid.foldLeft(ints)(0)(plus) == ints.sum)
-      }
-    }
-
-    behavior of "10.7 foldMapV"
-    it should "work" in {
-      forAll("ints") { ints: List[Int] =>
-        val intsAsStrings = ints.map(_.toString).toIndexedSeq
-        assert(Monoid.foldMapV(intsAsStrings, Monoid.intAddition)(_.toInt) == ints.sum)
-      }
-    }
-
-    behavior of "10.8 parFoldMap"
-    it should "work" in {
-      import fpinscala.parallelism.Nonblocking.Par
-      val es = Executors.newFixedThreadPool(4)
-      forAll("ints") { ints: List[Int] =>
-        val intsAsStrings = ints.map(_.toString).toIndexedSeq
-        val parSum = Monoid.parFoldMap(intsAsStrings, Monoid.intAddition)(_.toInt)
-        assert(Par.run(es)(parSum) == ints.sum)
-      }
-    }
-
-    behavior of "10.9 ordered"
-    it should "work" in {
-      assert(Monoid.ordered(IndexedSeq()))
-      assert(Monoid.ordered(IndexedSeq(1)))
-      assert(Monoid.ordered(IndexedSeq(-2, 0, 1, 3, 5)))
-      assert(Monoid.ordered(IndexedSeq(-2, 0, 3, 1, 6)) == false)
-      forAll("ints") {ints: Seq[Int] =>
-        assert(Monoid.ordered(ints.toIndexedSeq) == (ints == ints.sorted))
-      }
-    }
-
-    behavior of "10.10 wcMonoid"
-    it should "obey the monoid laws" in {
-      import fpinscala.testing.Gen
-      import fpinscala.testing.Prop.Passed
-      def intGen(max: Int) = Gen.choose(0, max)
-      def listGen[A](gen: Gen[A]) = gen.listOfN(intGen(10))
-      val stringGen = intGen(10) flatMap(Gen.stringN)
-      val stubGen = stringGen map(Monoid.Stub(_))
-      val partGen = for {
-        lStub <- stringGen
-        words <- intGen(10)
-        rStub <- stringGen
-      } yield Monoid.Part(lStub, words, rStub)
-      val wcGen: Gen[Monoid.WC] = Gen.union(stubGen, partGen)
-      val laws = Monoid.monoidLaws(Monoid.wcMonoid, wcGen)
-      assert(runProp(laws, 10) == Passed)
-    }
-
-    behavior of "10.11 countWords"
-    it should "work" in {
-      val strGen: Gen[String] = {
-        val whitespaceCharGen = Gen.oneOf(9.toChar, 10.toChar, 32.toChar)
-        val nonWhitespaceCharGen = Gen.choose(33.toChar, 127.toChar)
-        val charGen = Gen.frequency((1, whitespaceCharGen), (9, nonWhitespaceCharGen))
-        Gen.listOf(charGen).map(_.mkString)
-      }
-      def wordCount(s: String) = {
-        val s1 = s.trim
-        if (s1 == "") 0 else s1.split("""\s+""").size
-      }
-      forAll(strGen label "s") { s: String =>
-        assert(Monoid.countWords(s) == wordCount(s))
-      }
-    }
 
     val plus = (_:Int) + (_:Int)
     private def testFoldable[F[_]](foldable: Foldable[F], f: List[Int] => F[Int]) = {

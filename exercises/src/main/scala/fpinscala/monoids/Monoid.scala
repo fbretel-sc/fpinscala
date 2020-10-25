@@ -46,12 +46,17 @@ object Monoid {
   }
 
   // Exercise 10.3
-  type EndoF[A] = A => A
-  def endoMonoid[A]: Monoid[EndoF[A]] =
-    new Monoid[EndoF[A]] {
-      override def op(a1: EndoF[A], a2: EndoF[A]): EndoF[A] =  a1 andThen a2
-      override def zero: EndoF[A] = identity
+  def endoMonoid[A]: Monoid[A => A] =
+    new Monoid[A => A] {
+      override def op(a1: A => A, a2: A => A): A => A =  a1 andThen a2
+      override def zero: A => A = identity
     }
+
+  // COPIED FROM ANSWERS
+  def dual[A](m: Monoid[A]): Monoid[A] = new Monoid[A] {
+    def op(x: A, y: A): A = m.op(y, x)
+    val zero = m.zero
+  }
 
   // TODO: Placeholder for `Prop`. Remove once you have implemented the `Prop`
   // data type from Part 2.
@@ -102,38 +107,96 @@ object Monoid {
   def trimMonoid(s: String): Monoid[String] = ???
 
   def concatenate[A](as: List[A], m: Monoid[A]): A =
-    ???
+    as.foldLeft(m.zero)(m.op) // same result with foldRight
 
-  def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B =
-    ???
+  // Exercise 10.5
+  def foldMap[A, B](as: List[A], m: Monoid[B])(f: A => B): B = {
+    // as.map(f).foldLeft(m.zero)((b, a) => m.op(a, b))
+    // Improved with single pass
+    as.foldLeft(m.zero)((b, a) => {
+      val res = m.op(b, f(a))
+//      println(s"($b, $a) res=$res")
+      res
+    })
+  }
 
-  def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B =
-    ???
+  // Exercise 10.6
+  def foldRight[A, B](as: List[A])(z: B)(f: (A, B) => B): B = {
+    // f: A => (B => B)
+    def f2(a: A): B => B = f(a, _)  // f.curried
+    foldMap(as, dual(endoMonoid[B]))(f2)(z)
+  }
 
-  def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B =
-    ???
+  // Exercise 10.6
+  def foldLeft[A, B](as: List[A])(z: B)(f: (B, A) => B): B = {
+    // f: B => A => B
+    def f2(a: A): B => B = f(_, a)
+    foldMap(as, dual(endoMonoid[B]))(f2)(z)
+  }
 
-  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B =
-    ???
+  // Exercise 10.7
+  def foldMapV[A, B](as: IndexedSeq[A], m: Monoid[B])(f: A => B): B = {
+    if (as.isEmpty)
+      m.zero
+    else if (as.length == 1)
+      f(as.head)
+    else {
+      val (left, right) = as.splitAt(as.length / 2)
+      m.op(foldMapV(left, m)(f), foldMapV(right, m)(f))
+    }
+  }
 
-  def ordered(ints: IndexedSeq[Int]): Boolean =
-    ???
+  // Exercise 10.8
+  def par[A](m: Monoid[A]): Monoid[Par[A]] = new Monoid[Par[A]] {
+    override def op(a1: Par[A], a2: Par[A]): Par[A] = Par.map2(a1, a2)(m.op)
+    override def zero: Par[A] = Par.unit(m.zero)
+  }
+  def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
+    foldMapV(v, par(m))(Par.asyncF(f))
+
+  // Exercise 10.9
+  def ordered(ints: IndexedSeq[Int]): Boolean = if (ints.length < 2) true else {
+    case class Segment(lowest: Int, highest: Int, ordered: Boolean)
+    val m = new Monoid[Segment] {
+      override def op(a1: Segment, a2: Segment): Segment =
+        Segment(a1.lowest, a2.highest, a1.ordered && a2.ordered && a1.highest <= a2.lowest)
+      override def zero: Segment = Segment(ints(0), ints(0), ordered = true)
+    }
+    foldMap(ints.toList, m)(i => Segment(i, i, ordered = true)).ordered
+  }
 
   sealed trait WC
-
   case class Stub(chars: String) extends WC
-
   case class Part(lStub: String, words: Int, rStub: String) extends WC
 
-  def par[A](m: Monoid[A]): Monoid[Par[A]] =
-    ???
+  // Exercise 10.10
+  val wcMonoid: Monoid[WC] = new Monoid[WC] {
+    override def op(a1: WC, a2: WC): WC = (a1, a2) match {
+      case (Stub(s1), Stub(s2)) => Stub(s1 + s2)
+      case (Stub(s), Part(l, w, r)) => Part(s + l, w, r)
+      case (Part(l, w, r), Stub(s)) => Part(l, w, r + s)
+      case (Part(l1, w1, r1), Part(l2, w2, r2)) =>
+        Part(l1, w1 + (if (r1.isEmpty && l2.isEmpty) 0 else 1) + w2, r2)
+    }
+    override def zero: WC = Stub("")
+  }
 
-  def parFoldMap[A, B](v: IndexedSeq[A], m: Monoid[B])(f: A => B): Par[B] =
-    ???
+  // Exercise 10.11
+  def countWords(s: String): Int = {
+    // COPIED FROM ANSWERS
+    def wc(c: Char): WC =
+      if (c.isWhitespace)
+        Part("", 0, "")
+      else
+        Stub(c.toString)
 
-  //  val wcMonoid: Monoid[WC] = ???
+    def charToCount(s: String) = if (s.isEmpty) 0 else 1
 
-  def count(s: String): Int = ???
+    foldMapV(s.toIndexedSeq, wcMonoid)(wc) match {
+      case Stub(s) => charToCount(s)
+      case Part(l, w, r) => charToCount(l) + w + charToCount(r)
+    }
+  }
 
   def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
     ???
