@@ -32,8 +32,11 @@ class MonoidSpec extends Specification with ScalaCheck {
   val IntGenMax = 100
 
   def intGen(max: Int): Gen[MaxSize] = Gen.choose(0, max)
+
   def listGen[A](gen: Gen[A]): Gen[List[A]] = gen.listOfN(intGen(10))
+
   val stringGen: Gen[String] = intGen(10) flatMap stringN
+
   def optGen[A](gen: Gen[A]): Gen[Option[A]] =
     for {
       b <- Gen.boolean
@@ -235,10 +238,10 @@ class MonoidSpec extends Specification with ScalaCheck {
       SCProp.forAll(arbTree[Int].arbitrary) { ints: Tree[Int] =>
         val sum = treeSum(ints)
         foldable.foldRight(ints)(0)(plus) == sum &&
-        foldable.foldLeft(ints)(0)(plus) == sum &&
-        foldable.foldMap(ints)(identity)(Monoid.intAddition) == sum &&
-        foldable.concatenate(ints)(Monoid.intAddition) == sum &&
-        foldable.toList(ints) == treeList(ints)
+          foldable.foldLeft(ints)(0)(plus) == sum &&
+          foldable.foldMap(ints)(identity)(Monoid.intAddition) == sum &&
+          foldable.concatenate(ints)(Monoid.intAddition) == sum &&
+          foldable.toList(ints) == treeList(ints)
       }
     }
 
@@ -247,10 +250,10 @@ class MonoidSpec extends Specification with ScalaCheck {
       checkProp(Prop.forAll(optGen(intGen(IntGenMax))) { ints: Option[Int] =>
         val sum = ints.fold(0)(_ + 0)
         foldable.foldRight(ints)(0)(plus) == sum &&
-        foldable.foldLeft(ints)(0)(plus) == sum &&
-        foldable.foldMap(ints)(_.toInt)(Monoid.intAddition) == sum &&
-        foldable.concatenate(ints)(Monoid.intAddition) == sum &&
-        foldable.toList(ints) == ints.fold(List[Int]())(List(_))
+          foldable.foldLeft(ints)(0)(plus) == sum &&
+          foldable.foldMap(ints)(_.toInt)(Monoid.intAddition) == sum &&
+          foldable.concatenate(ints)(Monoid.intAddition) == sum &&
+          foldable.toList(ints) == ints.fold(List[Int]())(List(_))
       })
     }
 
@@ -272,36 +275,35 @@ class MonoidSpec extends Specification with ScalaCheck {
       })
     }
 
-  }
-  /*
+    "Exercise 10.16: productMonoid" in {
+      val tuple2Gen: Gen[(Int, Int)] = for {
+        a <- intGen(IntGenMax)
+        b <- intGen(IntGenMax)
+      } yield (a, b)
 
-
-    behavior of "10.16 productMonoid"
-    it should "work" in {
-      val pMonoid = Monoid.productMonoid(Monoid.intAddition, Monoid.intAddition)
-      checkMonoidLaws[(Int,Int)](pMonoid, Arbitrary.arbTuple2[Int,Int].arbitrary)
+      val pMonoid = Monoid.productMonoid(Monoid.intAddition, Monoid.intMultiplication)
+      checkMonoidLaws[(Int, Int)](pMonoid, tuple2Gen)
     }
 
-    behavior of "10.17 functionMonoid"
-    it should "obey the monoid laws" in {
-      val fMonoid = Monoid.functionMonoid[Int,String](Monoid.stringMonoid)
+    "Exercise 10.17: functionMonoid" in {
+      val fMonoid = Monoid.functionMonoid[Int, String](Monoid.stringMonoid)
       val functionGen =
-        Gen.oneOf[Int => String]({x: Int => x.toString}, {x: Int => x.toString + "x"})
-      checkMonoidLaws[Int => String](fMonoid, functionGen, isEqual[Int,String] _)
+        oneOf[Int => String](List({ x: Int => x.toString }, { x: Int => x.toString + "x" }))
+      checkProp(monoidFunctionLaws(fMonoid, functionGen, intGen(IntGenMax)))
     }
 
-    behavior of "10.18 bag"
-    it should "work" in {
-      assert(Monoid.bag(Vector("a", "rose", "is", "a", "rose")) ==
-        Map("a" -> 2, "rose" -> 2, "is" -> 1))
+    "Exercise 10.18: bag" in {
+      Monoid.bag(Vector("a", "rose", "is", "a", "rose")) shouldEqual Map("a" -> 2, "rose" -> 2, "is" -> 1)
 
       val words = "Yesterday all my troubles seemed so far away".split(" ").toSeq
-      val wordGen = Gen.oneOf(words)
+      val wordGen = oneOf(words)
       val sentenceGen = Gen.listOf(wordGen)
-      forAll(sentenceGen label "as") { as: List[String] =>
+      checkProp(Prop.forAll(sentenceGen) { as: List[String] =>
         val wordBag = as.groupBy(identity).mapValues(_.size)
-        assert(Monoid.bag(as.toIndexedSeq) == wordBag)
-      }
+        Monoid.bag(as.toIndexedSeq) == wordBag
+      })
     }
-  */
+
+  }
+
 }

@@ -81,7 +81,7 @@ object Monoid {
         m.op(a, m.zero) == a && m.op(m.zero, a) == a)
 
   // Exercise 10.4 - monoidLaws() doesn't work for functions as these are compared by value.
-  def monoidFunctionLaws[A](m: Monoid[A => A], genF: Gen[A => A], genA: Gen[A]): Prop =
+  def monoidFunctionLaws[A, B](m: Monoid[A => B], genF: Gen[A => B], genA: Gen[A]): Prop =
   // Associativity
     forAll(
       for {
@@ -198,17 +198,39 @@ object Monoid {
     }
   }
 
-  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] =
-    ???
+  // Exercise 10.16
+  def productMonoid[A, B](A: Monoid[A], B: Monoid[B]): Monoid[(A, B)] = new Monoid[(A, B)] {
+    override def op(a1: (A, B), a2: (A, B)): (A, B) = (A.op(a1._1, a2._1), B.op(a1._2, a2._2))
+    override def zero: (A, B) =  (A.zero, B.zero)
+  }
 
-  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] =
-    ???
+  // Exercise 10.17
+  def functionMonoid[A, B](B: Monoid[B]): Monoid[A => B] = new Monoid[A => B] {
+    override def op(a1: A => B, a2: A => B): A => B = (a: A) => B.op(a1(a), a2(a))
+    override def zero: A => B = (a: A) => B.zero
+  }
 
   def mapMergeMonoid[K, V](V: Monoid[V]): Monoid[Map[K, V]] =
-    ???
+    new Monoid[Map[K, V]] {
+      def zero = Map[K,V]()
+      def op(a: Map[K, V], b: Map[K, V]) =
+        (a.keySet ++ b.keySet).foldLeft(zero) { (acc,k) =>
+          acc.updated(k, V.op(a.getOrElse(k, V.zero),
+            b.getOrElse(k, V.zero)))
+        }
+    }
 
+  // Exercise 10.18
   def bag[A](as: IndexedSeq[A]): Map[A, Int] =
-    ???
+    // as.foldLeft(Map[A,Int]())((map, a) => map.updated(a, map.getOrElse(a, 0) + 1))
+    foldMapV(as, mapMergeMonoid[A, Int](
+      // new Monoid[Int] {
+      //  override def op(a1: MaxSize, a2: MaxSize): MaxSize = a1 + a2
+      //  override def zero: MaxSize = 0
+      // }
+      intAddition
+    ))(a => Map((a, 1)))
+
 }
 
 // Exercise 10.12
